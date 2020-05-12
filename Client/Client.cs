@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
+using System.Reflection.Emit;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,12 +26,6 @@ namespace Client
                 {
                     Communicate();
                 }).Start();
-                while (true)
-                {
-                    String userData = "";
-                    userData = Console.ReadLine();
-                    SendData(userData);
-                }
             }
             catch (Exception e)
             {
@@ -38,14 +33,29 @@ namespace Client
             }
         }
 
-        public void SendData(String data)
+        private void GoMessaging()
+        {
+            new Thread(() =>
+                {
+                    while (true)
+                    {
+                        String userData = "";
+                        userData = Console.ReadLine();
+                        SendData("MESSAGE", userData);
+                    }
+                }
+            ).Start();
+        }
+
+        public void SendData(String command, String data)
         {
             if (cSocket != null)
             {
                 try
                 {
-                    if (data.Trim().Equals("")) return;
-                    var b = Encoding.UTF8.GetBytes(data);
+                    if (data.Trim().Equals("") ||
+                        command.Trim().Equals("")) return;
+                    var b = Encoding.UTF8.GetBytes(command+"="+data);
                     Console.WriteLine("Отправка сообщения...");
                     cSocket.Send(b);
                     Console.WriteLine("Сообщение успешно отправлено!");
@@ -61,12 +71,44 @@ namespace Client
         {
             if (cSocket != null)
             {
-                Console.WriteLine("Начало общения с клиентом");
+                Console.WriteLine("Начало общения с сервером");
                 while (true)
                 {
                     String d = ReceiveData();
-                    Console.WriteLine("Сервер ответил: {0}", d);
+                    Parse(d);
                 }
+            }
+        }
+
+        private void Parse(string s)
+        {
+            // КОМАНДА=ЗНАЧЕНИЕ (LOGIN=Иван)
+            char[] sep = { '=' };
+            var cd = s.Split(sep, 2);
+            if (cd[0].ToUpper().Equals("LOGIN"))
+            {
+                String userName = "";
+                Console.WriteLine("Представьтесь: ");
+                userName = Console.ReadLine();
+                SendData("LOGIN", userName);
+            } else 
+            if (cd[0].ToUpper().Equals("MESSAGE"))
+            {
+                Console.WriteLine("{0}", cd[1]);
+            } else 
+            if (cd[0].ToUpper().Equals("USERLIST"))
+            {
+                var us = cd[1].Split(',');
+                Console.WriteLine("Список подключенных клиентов:");
+                foreach (var cl in us)
+                {
+                    Console.WriteLine(cl);
+                }
+                Console.WriteLine("-----------------------------");
+            } else if (cd[0].ToUpper().Equals("START"))
+            {
+                Console.WriteLine("Вы можете писать сообщения!");
+                GoMessaging();
             }
         }
 
