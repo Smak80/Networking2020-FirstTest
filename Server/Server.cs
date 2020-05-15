@@ -71,7 +71,7 @@ namespace Server
                     clients.ForEach((client) =>
                     {
                         if (client != this) 
-                            client.SendData("MESSAGE", s);
+                            client.SendData("MESSAGE", Name+": "+cd[1]);
                     });
                 }
             }
