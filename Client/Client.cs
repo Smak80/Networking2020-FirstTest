@@ -6,6 +6,7 @@ using System.Reflection.Emit;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using CommonNet;
 
 namespace Client
 {
@@ -14,6 +15,7 @@ namespace Client
         private String serverHost;
         private Socket cSocket;
         private int port = 8034;
+        private NetMessaging net;
         public Client(String serverHost)
         {
             try
@@ -22,15 +24,49 @@ namespace Client
                 Console.WriteLine("Подключение к {0}", this.serverHost);
                 cSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
                 cSocket.Connect(this.serverHost, port);
+                net = new NetMessaging(cSocket);
+                net.LoginCmdReceived += OnLogin;
+                net.UserListCmdReceived += OnUserList;
+                net.StartCmdReceived += OnStart;
+                net.MessageCmdReceived += OnMessage;
                 new Thread(() =>
                 {
-                    Communicate();
+                    try
+                    {
+                        net.Communicate();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Не удалось получить данные. Завершение соединения...");
+                    }
                 }).Start();
             }
             catch (Exception e)
             {
                 Console.WriteLine("Что-то пошло не так... :(");
             }
+        }
+
+        private void OnMessage(string command, string data)
+        {
+            Console.WriteLine("{0}", data);
+        }
+
+        private void OnStart(string command, string data)
+        {
+            Console.WriteLine("Вы можете писать сообщения!");
+            GoMessaging();
+        }
+
+        private void OnUserList(string command, string data)
+        {
+            var us = data.Split(',');
+            Console.WriteLine("Список подключенных клиентов:");
+            foreach (var cl in us)
+            {
+                Console.WriteLine(cl);
+            }
+            Console.WriteLine("-----------------------------");
         }
 
         private void GoMessaging()
@@ -41,95 +77,19 @@ namespace Client
                     {
                         String userData = "";
                         userData = Console.ReadLine();
-                        SendData("MESSAGE", userData);
+                        net.SendData("MESSAGE", userData);
                     }
                 }
             ).Start();
         }
 
-        public void SendData(String command, String data)
+        void OnLogin(string c, string d)
         {
-            if (cSocket != null)
-            {
-                try
-                {
-                    if (data.Trim().Equals("") ||
-                        command.Trim().Equals("")) return;
-                    var b = Encoding.UTF8.GetBytes(command+"="+data);
-                    Console.WriteLine("Отправка сообщения...");
-                    cSocket.Send(b);
-                    Console.WriteLine("Сообщение успешно отправлено!");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Не удалось отправить сообщение :(");
-                }
-            }
+            String userName = "";
+            Console.WriteLine("Представьтесь: ");
+            userName = Console.ReadLine();
+            net.SendData("LOGIN", userName);
         }
 
-        void Communicate()
-        {
-            if (cSocket != null)
-            {
-                Console.WriteLine("Начало общения с сервером");
-                while (true)
-                {
-                    String d = ReceiveData();
-                    Parse(d);
-                }
-            }
-        }
-
-        private void Parse(string s)
-        {
-            // КОМАНДА=ЗНАЧЕНИЕ (LOGIN=Иван)
-            char[] sep = { '=' };
-            var cd = s.Split(sep, 2);
-            if (cd[0].ToUpper().Equals("LOGIN"))
-            {
-                String userName = "";
-                Console.WriteLine("Представьтесь: ");
-                userName = Console.ReadLine();
-                SendData("LOGIN", userName);
-            } else 
-            if (cd[0].ToUpper().Equals("MESSAGE"))
-            {
-                Console.WriteLine("{0}", cd[1]);
-            } else 
-            if (cd[0].ToUpper().Equals("USERLIST"))
-            {
-                var us = cd[1].Split(',');
-                Console.WriteLine("Список подключенных клиентов:");
-                foreach (var cl in us)
-                {
-                    Console.WriteLine(cl);
-                }
-                Console.WriteLine("-----------------------------");
-            } else if (cd[0].ToUpper().Equals("START"))
-            {
-                Console.WriteLine("Вы можете писать сообщения!");
-                GoMessaging();
-            }
-        }
-
-        String ReceiveData()
-        {
-            String res = "";
-            if (cSocket != null)
-            {
-                try
-                {
-                    var b = new byte[65536];
-                    Console.WriteLine("Ожидание данных от клиента...");
-                    var cnt = cSocket.Receive(b);
-                    Console.WriteLine("Данные от клиента успешно получены");
-                    res = Encoding.UTF8.GetString(b, 0, cnt);
-                } catch (Exception ex)
-                {
-                    Console.WriteLine("Не удалось получить данные от клиента :(");
-                }
-            }
-            return res;
-        }
     }
 }

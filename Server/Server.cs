@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using CommonNet;
 
 namespace Server
 {
@@ -15,99 +16,50 @@ namespace Server
         class ConnectedClient
         {
             public Socket cSocket;
+            private NetMessaging net;
             public static List<ConnectedClient> clients = new List<ConnectedClient>();
             public string Name { get; private set; }
             public ConnectedClient(Socket s)
             {
                 cSocket = s;
-                SendData("LOGIN","?");
+                net = new NetMessaging(cSocket);
+                net.SendData("LOGIN","?");
+                net.LoginCmdReceived += OnLogin;
+                net.MessageCmdReceived += OnMessage;
                 new Thread(() =>
-                {
-                    Communicate();
-                }).Start();
-            }
-
-            void Communicate()
-            {
-                if (cSocket != null)
-                {
-                    Console.WriteLine("Начало общения с клиентом");
-                    while (true)
-                    {
-                        try
-                        {
-                            String d = ReceiveData();
-                            Console.WriteLine("Клиент передал: {0}", d);
-                            Parse(d);
-                        } catch (Exception ex)
-                        {
-                            Console.WriteLine("Не удалось получить данные от клиента :(");
-                            clients.Remove(this);
-                            break;
-                        } 
-                    }
-                }
-            }
-
-            private void Parse(string s)
-            {
-                // КОМАНДА=ЗНАЧЕНИЕ (LOGIN=Иван)
-                char[] sep = { '=' };
-                var cd = s.Split(sep, 2);
-                if (cd[0].ToUpper().Equals("LOGIN"))
-                {
-                    Name = cd[1];
-                    string list = "";
-                    clients.ForEach(client =>
-                    {
-                        list += client.Name + ",";
-                    });
-                    SendData("USERLIST", list);
-                    clients.Add(this);
-                    SendData("START", "!");
-                } else 
-                if (cd[0].ToUpper().Equals("MESSAGE"))
-                {
-                    clients.ForEach((client) =>
-                    {
-                        if (client != this) 
-                            client.SendData("MESSAGE", Name+": "+cd[1]);
-                    });
-                }
-            }
-
-            String ReceiveData()
-            {
-                String res = "";
-                if (cSocket != null)
-                {
-                    var b = new byte[65536];
-                    Console.WriteLine("Ожидание данных от клиента...");
-                    var cnt = cSocket.Receive(b);
-                    Console.WriteLine("Данные от клиента успешно получены");
-                    res = Encoding.UTF8.GetString(b, 0, cnt);
-                }
-                return res;
-            }
-
-            public void SendData(String command, String data)
-            {
-                if (cSocket != null)
                 {
                     try
                     {
-                        if (data.Trim().Equals("") ||
-                            command.Trim().Equals("")) return;
-                        var b = Encoding.UTF8.GetBytes(command+"="+data);
-                        Console.WriteLine("Отправка сообщения...");
-                        cSocket.Send(b);
-                        Console.WriteLine("Сообщение успешно отправлено!");
+                        net.Communicate();
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine("Не удалось отправить сообщение :(");
+                        Console.WriteLine("Не удалось получить данные от клиента :(");
+                        clients.Remove(this);
                     }
-                }
+                }).Start();
+            }
+
+            private void OnMessage(string command, string data)
+            {
+                clients.ForEach((client) =>
+                {
+                    if (client != this) 
+                        client.net.SendData("MESSAGE", Name+": "+data);
+                });
+            }
+
+            private void OnLogin(string command, string data)
+            {
+                Name = data;
+                string list = "";
+                clients.ForEach(client =>
+                {
+                    list += client.Name + ",";
+                });
+                net.SendData("USERLIST", list);
+                clients.Add(this);
+                net.SendData("START", "!");
             }
         }
         private String host;
